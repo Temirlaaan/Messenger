@@ -5,6 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!-- Контейнер фрагментов -->
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/nav_host_fragment"
         android:name="androidx.navigation.fragment.NavHostFragment"
@@ -13,11 +14,25 @@
         app:navGraph="@navigation/nav_graph"
         app:defaultNavHost="true" />
 
+    <!-- Фиолетовая линия над BottomNavigationView -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="72dp"
+        android:background="@color/purple" /> <!-- Замени на свой цвет -->
+
+    <!-- BottomNavigationView -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_navigation"
+        style="@style/CustomBottomNavigationView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="72dp"
         android:layout_gravity="bottom"
-        app:menu="@menu/bottom_nav_menu" />
+        android:background="@android:color/transparent"
+        app:itemIconTint="@drawable/bottom_nav_color"
+        app:itemTextColor="@drawable/bottom_nav_color"
+        app:menu="@menu/bottom_nav_menu"
+        app:labelVisibilityMode="unlabeled" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
