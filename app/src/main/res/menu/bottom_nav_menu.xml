@@ -4,17 +4,17 @@
         android:id="@+id/homeFragment"
         android:icon="@drawable/ic_chats"
         android:iconTint="@color/purple"
-        android:title="Главная" />
+        android:title="Чаты" />
 
     <item
         android:id="@+id/chatFragment"
         android:icon="@drawable/ic_contacts"
         android:iconTint="@color/purple"
-        android:title="Чаты" />
+        android:title="Контакты" />
 
     <item
         android:id="@+id/profileFragment"
         android:icon="@drawable/ic_settings"
         android:iconTint="@color/purple"
-        android:title="Профиль" />
+        android:title="Настройки" />
 </menu>
