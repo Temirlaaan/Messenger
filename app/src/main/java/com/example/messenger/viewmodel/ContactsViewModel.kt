@@ -16,14 +16,16 @@ class ContactsViewModel : ViewModel() {
 
     data class ContactsState(
         val contacts: List<User> = emptyList(),
-        val error: String? = null
+        val error: String? = null,
+        val isLoading: Boolean = false // Добавлено
     )
 
     fun loadContacts(userId: String) {
         Log.d("ContactsViewModel", "Loading contacts for userId=$userId")
+        _contactsState.value = ContactsState(isLoading = true) // Устанавливаем состояние загрузки
         userRepository.getAllUsers(userId) { users ->
             Log.d("ContactsViewModel", "Contacts loaded: ${users.size}")
-            _contactsState.value = ContactsState(contacts = users)
+            _contactsState.value = ContactsState(contacts = users, isLoading = false)
         }
     }
 }

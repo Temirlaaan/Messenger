@@ -8,8 +8,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.messenger.data.models.User
 import com.example.messenger.databinding.ItemContactBinding
 
-class ContactsAdapter(private val onContactClick: (String) -> Unit) :
-    ListAdapter<User, ContactsAdapter.ContactViewHolder>(ContactDiffCallback()) {
+class ContactsAdapter(
+    private val onContactClick: (String) -> Unit
+) : ListAdapter<User, ContactsAdapter.ContactViewHolder>(ContactDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ContactViewHolder {
         val binding = ItemContactBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -23,7 +24,12 @@ class ContactsAdapter(private val onContactClick: (String) -> Unit) :
     inner class ContactViewHolder(private val binding: ItemContactBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun bind(user: User) {
-            binding.contactNameText.text = user.username.ifEmpty { user.email } // Используем username
+            binding.contactNameText.text = user.username.ifEmpty { user.email }
+            binding.statusText.text = when (user.status) {
+                "online" -> "Онлайн"
+                "offline" -> "Оффлайн"
+                else -> "Неизвестно"
+            }
             binding.root.setOnClickListener { onContactClick(user.uid) }
         }
     }

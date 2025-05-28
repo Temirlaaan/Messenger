@@ -28,6 +28,7 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
         contactsViewModel = ViewModelProvider(this).get(ContactsViewModel::class.java)
         authViewModel = ViewModelProvider(requireActivity()).get(AuthViewModel::class.java)
 
+        // Инициализируем адаптер один раз
         contactsAdapter = ContactsAdapter { contactId ->
             val intent = Intent(requireContext(), ChatActivity::class.java).apply {
                 putExtra("receiverId", contactId)
@@ -41,13 +42,27 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
         }
 
         contactsViewModel.contactsState.observe(viewLifecycleOwner) { state ->
-            Log.d("FragmentContacts", "Contacts state updated: contacts=${state.contacts.size}, error=${state.error}")
+            Log.d("FragmentContacts", "Contacts state updated: contacts=${state.contacts.size}, error=${state.error}, isLoading=${state.isLoading}")
             Log.d("FragmentContacts", "Contacts list: ${state.contacts.map { it.username }}")
-            contactsAdapter.submitList(state.contacts)
+            if (state.isLoading) {
+                binding.loadingProgressBar.visibility = View.VISIBLE
+                binding.contactsTitle.visibility = View.GONE
+                binding.contactsRecyclerView.visibility = View.GONE
+            } else {
+                binding.loadingProgressBar.visibility = View.GONE
+                if (state.contacts.isNotEmpty()) {
+                    binding.contactsTitle.visibility = View.VISIBLE
+                    binding.contactsRecyclerView.visibility = View.VISIBLE
+                    contactsAdapter.submitList(state.contacts)
+                } else {
+                    binding.contactsTitle.visibility = View.GONE
+                    binding.contactsRecyclerView.visibility = View.GONE
+                }
+            }
             if (state.error != null) {
                 Toast.makeText(requireContext(), "Ошибка загрузки контактов: ${state.error}", Toast.LENGTH_LONG).show()
             }
-            if (state.contacts.isEmpty()) {
+            if (state.contacts.isEmpty() && state.error == null) {
                 Toast.makeText(requireContext(), "Контакты не найдены", Toast.LENGTH_SHORT).show()
             }
         }

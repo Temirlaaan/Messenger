@@ -8,6 +8,7 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.example.messenger.ui.auth.login.LoginActivity
 import com.example.messenger.viewmodel.AuthViewModel
+import com.example.messenger.viewmodel.ViewModelStoreOwnerProvider
 import com.example.messenger.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -22,6 +23,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         authViewModel = ViewModelProvider(this).get(AuthViewModel::class.java)
+
+        // Устанавливаем ViewModelStoreOwner для доступа к ViewModel
+        ViewModelStoreOwnerProvider.setViewModelStoreOwner(this)
 
         if (authViewModel.getCurrentUserId() == null || !authViewModel.isEmailVerified()) {
             startActivity(Intent(this, LoginActivity::class.java))

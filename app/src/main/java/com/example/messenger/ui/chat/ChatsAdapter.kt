@@ -13,8 +13,14 @@ import java.util.*
 
 class ChatsAdapter(
     private val onChatClick: (String) -> Unit,
-    private val users: List<User>
+    private var users: List<User> = emptyList() // Изначально пустой список
 ) : ListAdapter<Triple<String, Message?, Int>, ChatsAdapter.ChatViewHolder>(ChatDiffCallback()) {
+
+    // Метод для обновления списка пользователей
+    fun updateUsers(newUsers: List<User>) {
+        this.users = newUsers
+        notifyDataSetChanged() // Обновляем UI после изменения списка пользователей
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChatViewHolder {
         val binding = ItemChatBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -35,6 +41,11 @@ class ChatsAdapter(
             binding.chatNameText.text = user?.username?.ifEmpty { user.email } ?: "User_$userId"
             binding.lastMessageText.text = lastMessage?.content?.takeIf { it.isNotEmpty() }?.let { "Last: $it" } ?: "No messages yet"
             binding.timestampText.text = lastMessage?.let { SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.getTimestampAsDate()) } ?: ""
+            binding.statusText.text = when (user?.status) {
+                "online" -> "Онлайн"
+                "offline" -> "Оффлайн"
+                else -> "Неизвестно"
+            }
             if (unreadCount > 0) {
                 binding.lastMessageText.text = "${binding.lastMessageText.text} (Unread: $unreadCount)"
             }

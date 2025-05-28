@@ -12,9 +12,9 @@ class UserRepository {
     private val db = FirebaseDatabase.getInstance().reference
 
     fun saveUser(userId: String, userMap: Map<String, String>) {
-        db.child("users").child(userId).setValue(userMap)
-            .addOnSuccessListener { Log.d("UserRepository", "User saved: $userId") }
-            .addOnFailureListener { e -> Log.e("UserRepository", "Error saving user: ${e.message}") }
+        db.child("users").child(userId).updateChildren(userMap as Map<String, Any>)
+            .addOnSuccessListener { Log.d("UserRepository", "User updated: $userId") }
+            .addOnFailureListener { e -> Log.e("UserRepository", "Error updating user: ${e.message}") }
     }
 
     fun getUser(userId: String, callback: (User) -> Unit) {

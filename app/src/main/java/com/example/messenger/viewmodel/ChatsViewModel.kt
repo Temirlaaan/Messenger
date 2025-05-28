@@ -12,6 +12,7 @@ import com.example.messenger.data.repository.UserRepository
 class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
 
     private val chatRepository = ChatRepository()
+    private val userRepository = UserRepository()
 
     private val _chatsState = MutableLiveData<ChatsState>()
     val chatsState: LiveData<ChatsState> = _chatsState
@@ -19,10 +20,16 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
     private val _messagesState = MutableLiveData<MessagesState>()
     val messagesState: LiveData<MessagesState> = _messagesState
 
+    // Кэшированные данные
+    private var cachedChats: List<Triple<String, Message?, Int>>? = null
+    private var cachedUsers: List<User>? = null
+    private var cachedMessages: List<Message>? = null
+
     data class ChatsState(
         val chats: List<Triple<String, Message?, Int>> = emptyList(),
         val users: List<User> = emptyList(),
-        val error: String? = null
+        val error: String? = null,
+        val isLoading: Boolean = false
     )
 
     data class MessagesState(
@@ -33,11 +40,23 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
     )
 
     fun loadChats(userId: String) {
+        if (cachedChats != null && cachedUsers != null) {
+            Log.d("ChatsViewModel", "Returning cached chats: ${cachedChats!!.size}, users: ${cachedUsers!!.size}")
+            _chatsState.value = ChatsState(
+                chats = cachedChats!!,
+                users = cachedUsers!!,
+                isLoading = false
+            )
+            return
+        }
+
         Log.d("ChatsViewModel", "Loading chats for userId=$userId")
-        chatRepository.getChatsWithLastMessage(userId) { chatPairs ->
+        _chatsState.value = ChatsState(isLoading = true)
+        chatRepository.getChatsWithLastMessage(userId, useSingleEvent = cachedChats != null) { chatPairs ->
             if (chatPairs.isEmpty()) {
                 Log.d("ChatsViewModel", "No chats found for userId=$userId")
-                _chatsState.value = ChatsState(chats = emptyList())
+                cachedChats = emptyList()
+                _chatsState.value = ChatsState(chats = emptyList(), isLoading = false)
                 return@getChatsWithLastMessage
             }
             val chatTriples = mutableListOf<Triple<String, Message?, Int>>()
@@ -46,12 +65,13 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
                     chatTriples.add(Triple(chatId, lastMessage, unreadCount))
                     if (chatTriples.size == chatPairs.size) {
                         Log.d("ChatsViewModel", "Chats loaded: ${chatTriples.size}")
-                        _chatsState.value = ChatsState(chats = chatTriples)
+                        cachedChats = chatTriples
+                        _chatsState.value = ChatsState(chats = chatTriples, isLoading = false)
                         val userIds = chatPairs.map { it.first }.distinct()
-                        val userRepository = UserRepository()
                         userRepository.getUsersByIds(userIds) { users ->
                             Log.d("ChatsViewModel", "Users loaded for chats: ${users.size}")
-                            _chatsState.value = _chatsState.value?.copy(users = users)
+                            cachedUsers = users
+                            _chatsState.value = _chatsState.value?.copy(users = users, isLoading = false)
                         }
                     }
                 }
@@ -61,8 +81,15 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
 
     fun loadMessages(senderId: String, receiverId: String) {
         Log.d("ChatsViewModel", "Loading messages between senderId=$senderId and receiverId=$receiverId")
+        _messagesState.value = MessagesState(isLoading = true)
         chatRepository.getMessages(senderId, receiverId) { messages ->
-            _messagesState.value = MessagesState(messages = messages)
+            // Проверяем, изменился ли список сообщений
+            if (cachedMessages != messages) {
+                cachedMessages = messages
+                _messagesState.value = MessagesState(messages = messages, isLoading = false)
+            } else {
+                _messagesState.value = MessagesState(messages = cachedMessages!!, isLoading = false)
+            }
         }
     }
 
@@ -72,12 +99,16 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
         chatRepository.sendMessage(message) { success, error ->
             if (success) {
                 Log.d("ChatsViewModel", "Message sent successfully")
-                _messagesState.value = MessagesState(sendSuccess = true)
+                _messagesState.value = MessagesState(
+                    messages = cachedMessages ?: emptyList(),
+                    isLoading = false,
+                    sendSuccess = true
+                )
                 val userId = authViewModel.getCurrentUserId()
                 userId?.let { loadChats(it) }
             } else {
                 Log.e("ChatsViewModel", "Error sending message: $error")
-                _messagesState.value = MessagesState(error = error)
+                _messagesState.value = MessagesState(error = error, isLoading = false)
             }
         }
     }
@@ -91,8 +122,15 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
                 loadChats(currentUserId)
             } else {
                 Log.e("ChatsViewModel", "Error marking as read: $error")
-                _chatsState.value = _chatsState.value?.copy(error = error)
+                _chatsState.value = _chatsState.value?.copy(error = error, isLoading = false)
             }
         }
+    }
+
+    fun clearCache() {
+        cachedChats = null
+        cachedUsers = null
+        cachedMessages = null
+        Log.d("ChatsViewModel", "Cache cleared")
     }
 }
