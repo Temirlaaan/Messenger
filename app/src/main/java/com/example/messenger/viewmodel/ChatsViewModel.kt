@@ -1,5 +1,6 @@
 package com.example.messenger.viewmodel
 
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -8,11 +9,14 @@ import com.example.messenger.data.models.Message
 import com.example.messenger.data.models.User
 import com.example.messenger.data.repository.ChatRepository
 import com.example.messenger.data.repository.UserRepository
+import com.google.firebase.storage.FirebaseStorage
+import java.util.UUID
 
 class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
 
     private val chatRepository = ChatRepository()
     private val userRepository = UserRepository()
+    private val storage = FirebaseStorage.getInstance()
 
     private val _chatsState = MutableLiveData<ChatsState>()
     val chatsState: LiveData<ChatsState> = _chatsState
@@ -20,7 +24,6 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
     private val _messagesState = MutableLiveData<MessagesState>()
     val messagesState: LiveData<MessagesState> = _messagesState
 
-    // Кэшированные данные
     private var cachedChats: List<Triple<String, Message?, Int>>? = null
     private var cachedUsers: List<User>? = null
     private var cachedMessages: List<Message>? = null
@@ -36,7 +39,8 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
         val messages: List<Message> = emptyList(),
         val error: String? = null,
         val isLoading: Boolean = false,
-        val sendSuccess: Boolean = false
+        val sendSuccess: Boolean = false,
+        val isSending: Boolean = false
     )
 
     fun loadChats(userId: String) {
@@ -83,7 +87,6 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
         Log.d("ChatsViewModel", "Loading messages between senderId=$senderId and receiverId=$receiverId")
         _messagesState.value = MessagesState(isLoading = true)
         chatRepository.getMessages(senderId, receiverId) { messages ->
-            // Проверяем, изменился ли список сообщений
             if (cachedMessages != messages) {
                 cachedMessages = messages
                 _messagesState.value = MessagesState(messages = messages, isLoading = false)
@@ -95,20 +98,65 @@ class ChatsViewModel(private val authViewModel: AuthViewModel) : ViewModel() {
 
     fun sendMessage(message: Message) {
         Log.d("ChatsViewModel", "Sending message: ${message.content}")
-        _messagesState.value = MessagesState(isLoading = true)
+
+        val currentState = _messagesState.value ?: MessagesState()
+        _messagesState.value = currentState.copy(isSending = true)
+
         chatRepository.sendMessage(message) { success, error ->
             if (success) {
                 Log.d("ChatsViewModel", "Message sent successfully")
                 _messagesState.value = MessagesState(
                     messages = cachedMessages ?: emptyList(),
                     isLoading = false,
-                    sendSuccess = true
+                    sendSuccess = true,
+                    isSending = false
                 )
                 val userId = authViewModel.getCurrentUserId()
                 userId?.let { loadChats(it) }
             } else {
                 Log.e("ChatsViewModel", "Error sending message: $error")
-                _messagesState.value = MessagesState(error = error, isLoading = false)
+                _messagesState.value = MessagesState(
+                    error = error,
+                    isLoading = false,
+                    isSending = false
+                )
+            }
+        }
+    }
+
+    fun uploadAndSendImage(senderId: String, receiverId: String, imageUri: Uri, callback: (Boolean, String?) -> Unit) {
+        Log.d("ChatsViewModel", "Uploading image for senderId=$senderId, receiverId=$receiverId")
+
+        val currentState = _messagesState.value ?: MessagesState()
+        _messagesState.value = currentState.copy(isSending = true)
+
+        val storageRef = storage.reference
+        val imageRef = storageRef.child("chat_images/${UUID.randomUUID()}.jpg")
+        val uploadTask = imageRef.putFile(imageUri)
+
+        uploadTask.continueWithTask { task ->
+            if (!task.isSuccessful) {
+                task.exception?.let { throw it }
+            }
+            imageRef.downloadUrl
+        }.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val downloadUrl = task.result.toString()
+                val message = Message(
+                    senderId = senderId,
+                    receiverId = receiverId,
+                    content = "Image", // Текст для отображения в списке чатов
+                    timestamp = System.currentTimeMillis(),
+                    isRead = false,
+                    type = "image",
+                    imageUrl = downloadUrl
+                )
+                sendMessage(message)
+                callback(true, null)
+            } else {
+                Log.e("ChatsViewModel", "Error uploading image: ${task.exception?.message}")
+                _messagesState.value = currentState.copy(isSending = false, error = task.exception?.message)
+                callback(false, task.exception?.message)
             }
         }
     }

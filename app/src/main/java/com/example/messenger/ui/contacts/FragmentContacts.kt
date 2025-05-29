@@ -2,6 +2,8 @@ package com.example.messenger.ui.contacts
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -9,6 +11,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.messenger.R
+import com.example.messenger.data.models.User
 import com.example.messenger.ui.chat.ChatActivity
 import com.example.messenger.viewmodel.AuthViewModel
 import com.example.messenger.viewmodel.ContactsViewModel
@@ -20,6 +23,7 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
     private lateinit var contactsViewModel: ContactsViewModel
     private lateinit var authViewModel: AuthViewModel
     private lateinit var contactsAdapter: ContactsAdapter
+    private var allContacts: List<User> = emptyList() // Сохраняем полный список для фильтрации
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -41,6 +45,15 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
             adapter = contactsAdapter
         }
 
+        // Настраиваем слушатель для EditText
+        binding.searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterContacts(s.toString())
+            }
+        })
+
         contactsViewModel.contactsState.observe(viewLifecycleOwner) { state ->
             Log.d("FragmentContacts", "Contacts state updated: contacts=${state.contacts.size}, error=${state.error}, isLoading=${state.isLoading}")
             Log.d("FragmentContacts", "Contacts list: ${state.contacts.map { it.username }}")
@@ -53,17 +66,17 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
                 if (state.contacts.isNotEmpty()) {
                     binding.contactsTitle.visibility = View.VISIBLE
                     binding.contactsRecyclerView.visibility = View.VISIBLE
-                    contactsAdapter.submitList(state.contacts)
+                    allContacts = state.contacts // Сохраняем полный список
+                    filterContacts(binding.searchEditText.text.toString()) // Применяем текущий фильтр
                 } else {
                     binding.contactsTitle.visibility = View.GONE
                     binding.contactsRecyclerView.visibility = View.GONE
+                    allContacts = emptyList()
+                    contactsAdapter.submitList(emptyList())
                 }
             }
             if (state.error != null) {
                 Toast.makeText(requireContext(), "Ошибка загрузки контактов: ${state.error}", Toast.LENGTH_LONG).show()
-            }
-            if (state.contacts.isEmpty() && state.error == null) {
-                Toast.makeText(requireContext(), "Контакты не найдены", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -74,5 +87,17 @@ class FragmentContacts : Fragment(R.layout.fragment_contacts) {
         } else {
             Toast.makeText(requireContext(), "Пользователь не авторизован", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun filterContacts(query: String) {
+        val filteredList = if (query.isEmpty()) {
+            allContacts
+        } else {
+            allContacts.filter {
+                it.username.contains(query, ignoreCase = true) || it.email.contains(query, ignoreCase = true)
+            }
+        }
+        contactsAdapter.submitList(filteredList)
+        binding.contactsRecyclerView.scrollToPosition(0) // Прокручиваем к началу списка после фильтрации
     }
 }

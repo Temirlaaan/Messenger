@@ -2,7 +2,8 @@ package com.example.messenger.ui.chats
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -10,13 +11,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.messenger.R
 import com.example.messenger.data.models.Message
+import com.example.messenger.data.models.User
+import com.example.messenger.databinding.FragmentChatsBinding
 import com.example.messenger.ui.chat.ChatActivity
 import com.example.messenger.viewmodel.AuthViewModel
 import com.example.messenger.viewmodel.ChatsViewModel
 import com.example.messenger.viewmodel.ChatsViewModelFactory
-import com.example.messenger.databinding.FragmentChatsBinding
-import java.text.SimpleDateFormat
-import java.util.*
 
 class FragmentChats : Fragment(R.layout.fragment_chats) {
 
@@ -24,6 +24,8 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
     private lateinit var chatsViewModel: ChatsViewModel
     private lateinit var authViewModel: AuthViewModel
     private lateinit var chatsAdapter: ChatsAdapter
+    private var allChats: List<Triple<String, Message?, Int>> = emptyList()
+    private var allUsers: List<User> = emptyList()
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -32,7 +34,6 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
         authViewModel = ViewModelProvider(requireActivity()).get(AuthViewModel::class.java)
         chatsViewModel = ViewModelProvider(requireActivity(), ChatsViewModelFactory(authViewModel)).get(ChatsViewModel::class.java)
 
-        // Инициализируем адаптер один раз
         chatsAdapter = ChatsAdapter({ chatId ->
             val intent = Intent(requireContext(), ChatActivity::class.java).apply {
                 putExtra("receiverId", chatId)
@@ -46,45 +47,61 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
             adapter = chatsAdapter
         }
 
-        // Наблюдаем за изменениями состояния
+        binding.searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                filterChats(s.toString())
+            }
+        })
+
         chatsViewModel.chatsState.observe(viewLifecycleOwner) { state ->
-            Log.d("FragmentChats", "Chats state updated: chats=${state.chats.size}, users=${state.users.size}, error=${state.error}, isLoading=${state.isLoading}")
             if (state.isLoading) {
-                binding.loadingProgressBar.animate().alpha(1f).setDuration(200).start()
-                binding.chatsRecyclerView.animate().alpha(0f).setDuration(200).withEndAction {
-                    binding.loadingProgressBar.visibility = View.VISIBLE
-                    binding.chatsRecyclerView.visibility = View.GONE
-                }.start()
+                binding.loadingProgressBar.visibility = View.VISIBLE
+                binding.contactsTitle.visibility = View.GONE
+                binding.chatsRecyclerView.visibility = View.GONE
             } else {
-                binding.loadingProgressBar.animate().alpha(0f).setDuration(200).withEndAction {
-                    binding.loadingProgressBar.visibility = View.GONE
-                }.start()
+                binding.loadingProgressBar.visibility = View.GONE
                 if (state.chats.isNotEmpty()) {
+                    binding.contactsTitle.visibility = View.VISIBLE
                     binding.chatsRecyclerView.visibility = View.VISIBLE
-                    binding.chatsRecyclerView.animate().alpha(1f).setDuration(200).start()
-                    chatsAdapter.updateUsers(state.users)
-                    chatsAdapter.submitList(state.chats)
+                    allChats = state.chats
+                    allUsers = state.users
+                    chatsAdapter.updateUsers(allUsers)
+                    filterChats(binding.searchEditText.text.toString())
                 } else {
-                    binding.chatsRecyclerView.animate().alpha(0f).setDuration(200).withEndAction {
-                        binding.chatsRecyclerView.visibility = View.GONE
-                    }.start()
+                    binding.contactsTitle.visibility = View.GONE
+                    binding.chatsRecyclerView.visibility = View.GONE
+                    allChats = emptyList()
+                    allUsers = emptyList()
+                    chatsAdapter.submitList(emptyList())
                 }
             }
             if (state.error != null) {
                 Toast.makeText(requireContext(), "Ошибка загрузки чатов: ${state.error}", Toast.LENGTH_LONG).show()
             }
-            if (state.chats.isEmpty() && !state.isLoading) {
-                Toast.makeText(requireContext(), "Чаты не найдены", Toast.LENGTH_SHORT).show()
-            }
         }
 
-        // Загружаем данные, если пользователь авторизован
         val userId = authViewModel.getCurrentUserId()
         if (userId != null) {
-            Log.d("FragmentChats", "Loading chats for userId=$userId")
             chatsViewModel.loadChats(userId)
         } else {
             Toast.makeText(requireContext(), "Пользователь не авторизован", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun filterChats(query: String) {
+        val filteredChats = if (query.isEmpty()) {
+            allChats
+        } else {
+            allChats.filter { chat ->
+                val user = allUsers.find { it.uid == chat.first }
+                val username = user?.username ?: ""
+                val email = user?.email ?: ""
+                username.contains(query, ignoreCase = true) || email.contains(query, ignoreCase = true)
+            }
+        }
+        chatsAdapter.submitList(filteredChats)
+        binding.chatsRecyclerView.scrollToPosition(0)
     }
 }

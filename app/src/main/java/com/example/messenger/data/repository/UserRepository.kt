@@ -21,7 +21,14 @@ class UserRepository {
         db.child("users").child(userId)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val user = snapshot.getValue(User::class.java)?.copy(uid = userId) ?: User()
+                    val userData = snapshot.value as? Map<String, Any?> ?: emptyMap<String, Any?>()
+                    val user = User(
+                        uid = userId,
+                        username = userData["username"] as? String ?: "",
+                        email = userData["email"] as? String ?: "",
+                        status = userData["status"] as? String ?: "offline",
+                        profileImageUrl = userData["profileImageUrl"] as? String // Безопасная обработка null
+                    )
                     Log.d("UserRepository", "User loaded: $user")
                     callback(user)
                 }
@@ -44,8 +51,15 @@ class UserRepository {
             db.child("users").child(userId)
                 .addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        val user = snapshot.getValue(User::class.java)?.copy(uid = userId)
-                        if (user != null) users.add(user)
+                        val userData = snapshot.value as? Map<String, Any?> ?: emptyMap<String, Any?>()
+                        val user = User(
+                            uid = userId,
+                            username = userData["username"] as? String ?: "",
+                            email = userData["email"] as? String ?: "",
+                            status = userData["status"] as? String ?: "offline",
+                            profileImageUrl = userData["profileImageUrl"] as? String
+                        )
+                        if (user.uid.isNotEmpty()) users.add(user)
                         if (users.size == userIds.size) {
                             Log.d("UserRepository", "Users loaded by IDs: ${users.size}, IDs=$userIds")
                             callback(users)
@@ -64,10 +78,19 @@ class UserRepository {
         db.child("users")
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val allUsers = snapshot.children.mapNotNull { it.getValue(User::class.java)?.copy(uid = it.key!!) }
-                    val filteredUsers = allUsers.filter { it.uid != exceptUserId }
-                    Log.d("UserRepository", "Filtered users (except $exceptUserId): ${filteredUsers.size}")
-                    callback(filteredUsers)
+                    val allUsers = snapshot.children.mapNotNull { snap ->
+                        val userData = snap.value as? Map<String, Any?> ?: emptyMap<String, Any?>()
+                        val user = User(
+                            uid = snap.key ?: "",
+                            username = userData["username"] as? String ?: "",
+                            email = userData["email"] as? String ?: "",
+                            status = userData["status"] as? String ?: "offline",
+                            profileImageUrl = userData["profileImageUrl"] as? String
+                        )
+                        if (user.uid != exceptUserId) user else null
+                    }
+                    Log.d("UserRepository", "Filtered users (except $exceptUserId): ${allUsers.size}")
+                    callback(allUsers)
                 }
 
                 override fun onCancelled(error: DatabaseError) {

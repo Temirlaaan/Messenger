@@ -11,4 +11,14 @@
         <item name="itemIconSize">32dp</item> <!-- Увеличенные иконки -->
     </style>
 
+    <style name="CustomSearchView" parent="Widget.AppCompat.SearchView">
+        <!-- Убираем подчеркивание -->
+        <item name="queryBackground">@android:color/transparent</item>
+        <!-- Цвет текста -->
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textColorHint">@android:color/darker_gray</item>
+        <!-- Устанавливаем значок поиска справа -->
+        <item name="searchIcon">@drawable/ic_search</item>
+    </style>
+
 </resources>

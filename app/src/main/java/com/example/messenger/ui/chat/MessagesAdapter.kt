@@ -1,12 +1,13 @@
 package com.example.messenger.ui.chat
 
+import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.example.messenger.data.models.Message
 import com.example.messenger.databinding.ItemMessageBinding
 import java.text.SimpleDateFormat
@@ -25,36 +26,74 @@ class MessagesAdapter(private val currentUserId: String) :
     }
 
     override fun getItemId(position: Int): Long {
-        // Используем timestamp как уникальный ID
         return getItem(position).timestamp
     }
 
     inner class MessageViewHolder(private val binding: ItemMessageBinding) :
         RecyclerView.ViewHolder(binding.root) {
         fun bind(message: Message) {
-            binding.messageText.text = message.content
+            // Настройка контента сообщения
+            if (message.type == "image" && message.imageUrl != null) {
+                binding.messageText.visibility = View.GONE
+                binding.messageImage.visibility = View.VISIBLE
+
+                Glide.with(binding.root.context)
+                    .load(message.imageUrl)
+                    .into(binding.messageImage)
+
+                // Добавляем клик для открытия фото в полном размере
+                binding.messageImage.setOnClickListener {
+                    val intent = Intent(binding.root.context, FullScreenImageActivity::class.java)
+                    intent.putExtra("imageUrl", message.imageUrl)
+                    binding.root.context.startActivity(intent)
+                }
+            } else {
+                binding.messageText.visibility = View.VISIBLE
+                binding.messageImage.visibility = View.GONE
+                binding.messageText.text = message.content
+
+                // Убираем клик для текстовых сообщений
+                binding.messageImage.setOnClickListener(null)
+            }
+
             binding.timestampText.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(message.getTimestampAsDate())
 
-            // Настраиваем выравнивание и цвет фона через LayoutParams
-            val layoutParams = binding.messageContainer.layoutParams as LinearLayout.LayoutParams
+            // Правильная настройка выравнивания сообщений
+            val rootLayoutParams = binding.root.layoutParams as RecyclerView.LayoutParams
+
             if (message.senderId == currentUserId) {
-                // Свои сообщения (справа)
+                // Мои сообщения - справа
                 binding.messageContainer.backgroundTintList = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.parseColor("#E1FFC7") // Светло-зеленый
+                    android.graphics.Color.parseColor("#E1FFC7")
                 )
-                layoutParams.gravity = android.view.Gravity.END
-                layoutParams.setMargins(64, 0, 8, 0) // Отступы: слева 64dp, справа 8dp
-                binding.messageContainer.layoutDirection = View.LAYOUT_DIRECTION_RTL
-            } else {
-                // Чужие сообщения (слева)
-                binding.messageContainer.backgroundTintList = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.parseColor("#FFFFFF") // Белый
-                )
-                layoutParams.gravity = android.view.Gravity.START
-                layoutParams.setMargins(8, 0, 64, 0) // Отступы: слева 8dp, справа 64dp
+                rootLayoutParams.setMargins(100, 8, 16, 8) // Большой отступ слева
+                binding.root.layoutParams = rootLayoutParams
+
+                // Убираем RTL, используем gravity
                 binding.messageContainer.layoutDirection = View.LAYOUT_DIRECTION_LTR
+
+                // Выравнивание родительского элемента
+                if (binding.root is android.widget.FrameLayout) {
+                    val containerParams = binding.messageContainer.layoutParams as android.widget.FrameLayout.LayoutParams
+                    containerParams.gravity = android.view.Gravity.END
+                    binding.messageContainer.layoutParams = containerParams
+                }
+            } else {
+                // Сообщения собеседника - слева
+                binding.messageContainer.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.parseColor("#FFFFFF")
+                )
+                rootLayoutParams.setMargins(16, 8, 100, 8) // Большой отступ справа
+                binding.root.layoutParams = rootLayoutParams
+
+                binding.messageContainer.layoutDirection = View.LAYOUT_DIRECTION_LTR
+
+                if (binding.root is android.widget.FrameLayout) {
+                    val containerParams = binding.messageContainer.layoutParams as android.widget.FrameLayout.LayoutParams
+                    containerParams.gravity = android.view.Gravity.START
+                    binding.messageContainer.layoutParams = containerParams
+                }
             }
-            binding.messageContainer.layoutParams = layoutParams
         }
     }
 }

@@ -10,51 +10,7 @@ import com.google.firebase.database.ValueEventListener
 
 class ChatRepository {
 
-    private val db: DatabaseReference = FirebaseDatabase.getInstance().getReference()
-
-    fun getChatsWithLastMessage(userId: String, useSingleEvent: Boolean = false, callback: (List<Pair<String, Message?>>) -> Unit) {
-        val listener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val chats = snapshot.children.mapNotNull { chatSnapshot ->
-                    val chatId = chatSnapshot.key ?: return@mapNotNull null
-                    val lastMessage = chatSnapshot.child("lastMessage").getValue(Message::class.java)
-                    val otherUserId = chatId.replace(userId, "").replace("_", "")
-                    otherUserId to lastMessage
-                }
-                Log.d("ChatRepository", "Chats loaded for userId=$userId: ${chats.size}")
-                callback(chats)
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatRepository", "Error getting chats: ${error.message}")
-                callback(emptyList())
-            }
-        }
-
-        if (useSingleEvent) {
-            db.child("chats").child(userId).addListenerForSingleValueEvent(listener)
-        } else {
-            db.child("chats").child(userId).addValueEventListener(listener)
-        }
-    }
-
-    fun getUnreadCount(userId: String, chatId: String, callback: (Int) -> Unit) {
-        db.child("messages").child(chatId).addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val unreadCount = snapshot.children.count { messageSnapshot ->
-                    val message = messageSnapshot.getValue(Message::class.java)
-                    message?.receiverId == userId && message.isRead == false
-                }
-                Log.d("ChatRepository", "Unread count for $chatId: $unreadCount")
-                callback(unreadCount)
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatRepository", "Error getting unread count: ${error.message}")
-                callback(0)
-            }
-        })
-    }
+    private val db: DatabaseReference = FirebaseDatabase.getInstance().reference
 
     fun getMessages(senderId: String, receiverId: String, callback: (List<Message>) -> Unit) {
         val chatId = if (senderId < receiverId) "${senderId}_${receiverId}" else "${receiverId}_${senderId}"
@@ -62,7 +18,6 @@ class ChatRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val messages = snapshot.children.mapNotNull { it.getValue(Message::class.java) }
                     .sortedBy { it.timestamp }
-                Log.d("ChatRepository", "Messages loaded for chatId=$chatId: ${messages.size}")
                 callback(messages)
             }
 
@@ -76,37 +31,87 @@ class ChatRepository {
     fun sendMessage(message: Message, callback: (Boolean, String?) -> Unit) {
         val chatId = if (message.senderId < message.receiverId) "${message.senderId}_${message.receiverId}" else "${message.receiverId}_${message.senderId}"
         val messageRef = db.child("messages").child(chatId).push()
-        messageRef.setValue(message).addOnSuccessListener {
-            updateLastMessage(chatId, message)
-            callback(true, null)
-        }.addOnFailureListener { error ->
-            Log.e("ChatRepository", "Error sending message: ${error.message}")
-            callback(false, error.message)
+        messageRef.setValue(message).addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                callback(true, null)
+            } else {
+                callback(false, task.exception?.message)
+            }
         }
     }
 
-    private fun updateLastMessage(chatId: String, message: Message) {
-        val senderChatRef = db.child("chats").child(message.senderId).child(chatId)
-        val receiverChatRef = db.child("chats").child(message.receiverId).child(chatId)
-        senderChatRef.child("lastMessage").setValue(message)
-        receiverChatRef.child("lastMessage").setValue(message)
+    fun getChatsWithLastMessage(userId: String, useSingleEvent: Boolean, callback: (List<Pair<String, Message?>>) -> Unit) {
+        val chatsRef = db.child("messages")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val chatPairs = mutableListOf<Pair<String, Message?>>()
+                for (chatSnapshot in snapshot.children) {
+                    val chatId = chatSnapshot.key ?: continue
+                    if (chatId.contains(userId)) {
+                        val otherUserId = chatId.split("_").find { it != userId } ?: continue
+                        val lastMessage = chatSnapshot.children
+                            .mapNotNull { it.getValue(Message::class.java) }
+                            .maxByOrNull { it.timestamp }
+                        chatPairs.add(Pair(otherUserId, lastMessage))
+                    }
+                }
+                callback(chatPairs)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatRepository", "Error getting chats: ${error.message}")
+                callback(emptyList())
+            }
+        }
+        if (useSingleEvent) {
+            chatsRef.addListenerForSingleValueEvent(listener)
+        } else {
+            chatsRef.addValueEventListener(listener)
+        }
+    }
+
+    fun getUnreadCount(userId: String, otherUserId: String, callback: (Int) -> Unit) {
+        val chatId = if (userId < otherUserId) "${userId}_${otherUserId}" else "${otherUserId}_${userId}"
+        db.child("messages").child(chatId).addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val unreadCount = snapshot.children
+                    .mapNotNull { it.getValue(Message::class.java) }
+                    .count { it.receiverId == userId && !it.isRead }
+                callback(unreadCount)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("ChatRepository", "Error getting unread count: ${error.message}")
+                callback(0)
+            }
+        })
     }
 
     fun markAsRead(senderId: String, receiverId: String, currentUserId: String, callback: (Boolean, String?) -> Unit) {
         val chatId = if (senderId < receiverId) "${senderId}_${receiverId}" else "${receiverId}_${senderId}"
         db.child("messages").child(chatId).addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                val updates = mutableMapOf<String, Any>()
                 snapshot.children.forEach { messageSnapshot ->
                     val message = messageSnapshot.getValue(Message::class.java)
-                    if (message?.receiverId == currentUserId && message.isRead == false) {
-                        messageSnapshot.ref.child("isRead").setValue(true)
+                    if (message?.receiverId == currentUserId && !message.isRead) {
+                        updates["${messageSnapshot.key}/isRead"] = true
                     }
                 }
-                callback(true, null)
+                if (updates.isNotEmpty()) {
+                    db.child("messages").child(chatId).updateChildren(updates).addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            callback(true, null)
+                        } else {
+                            callback(false, task.exception?.message)
+                        }
+                    }
+                } else {
+                    callback(true, null)
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
-                Log.e("ChatRepository", "Error marking as read: ${error.message}")
                 callback(false, error.message)
             }
         })

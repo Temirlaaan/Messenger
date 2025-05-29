@@ -5,6 +5,8 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.example.messenger.R
 import com.example.messenger.data.models.Message
 import com.example.messenger.data.models.User
 import com.example.messenger.databinding.ItemChatBinding
@@ -38,6 +40,7 @@ class ChatsAdapter(
             val lastMessage = chat.second
             val unreadCount = chat.third
             val user = users.find { it.uid == userId }
+
             binding.chatNameText.text = user?.username?.ifEmpty { user.email } ?: "User_$userId"
             binding.lastMessageText.text = lastMessage?.content?.takeIf { it.isNotEmpty() }?.let { "Last: $it" } ?: "No messages yet"
             binding.timestampText.text = lastMessage?.let { SimpleDateFormat("HH:mm", Locale.getDefault()).format(it.getTimestampAsDate()) } ?: ""
@@ -46,9 +49,25 @@ class ChatsAdapter(
                 "offline" -> "Оффлайн"
                 else -> "Неизвестно"
             }
+
             if (unreadCount > 0) {
                 binding.lastMessageText.text = "${binding.lastMessageText.text} (Unread: $unreadCount)"
             }
+
+            // Загружаем аватар пользователя
+            user?.let { userInfo ->
+                if (userInfo.profileImageUrl?.isNotEmpty() == true) {
+                    Glide.with(binding.root.context)
+                        .load(userInfo.profileImageUrl)
+                        .placeholder(R.drawable.ic_profile_picture)
+                        .error(R.drawable.ic_profile_picture)
+                        .circleCrop()
+                        .into(binding.profileImageView) // Предполагаем, что в item_chat.xml есть ImageView с этим ID
+                } else {
+                    binding.profileImageView.setImageResource(R.drawable.ic_profile_picture)
+                }
+            }
+
             binding.root.setOnClickListener { onChatClick(userId) }
         }
     }

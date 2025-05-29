@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.firebase.auth.ktx)
     implementation(libs.firebase.firestore.ktx)
+    implementation(libs.firebase.storage.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -71,4 +72,6 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
 
     implementation ("com.google.firebase:firebase-database-ktx:20.3.0")
+
+    implementation ("com.github.bumptech.glide:glide:4.15.1")
 }

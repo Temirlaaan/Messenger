@@ -5,6 +5,8 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.example.messenger.R
 import com.example.messenger.data.models.User
 import com.example.messenger.databinding.ItemContactBinding
 
@@ -30,6 +32,19 @@ class ContactsAdapter(
                 "offline" -> "Оффлайн"
                 else -> "Неизвестно"
             }
+
+            // Загружаем аватар контакта
+            if (!user.profileImageUrl.isNullOrEmpty()) {
+                Glide.with(binding.profilePicture.context)
+                    .load(user.profileImageUrl)
+                    .placeholder(R.drawable.ic_profile_picture)
+                    .error(R.drawable.ic_profile_picture)
+                    .circleCrop()
+                    .into(binding.profilePicture)
+            } else {
+                binding.profilePicture.setImageResource(R.drawable.ic_profile_picture)
+            }
+
             binding.root.setOnClickListener { onContactClick(user.uid) }
         }
     }

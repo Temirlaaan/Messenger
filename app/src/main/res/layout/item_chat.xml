@@ -5,7 +5,7 @@
     android:layout_height="wrap_content">
 
     <ImageView
-        android:id="@+id/profilePicture"
+        android:id="@+id/profileImageView"
         android:layout_width="65dp"
         android:layout_height="65dp"
         android:layout_margin="10dp"
@@ -24,8 +24,8 @@
         android:textSize="16sp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        app:layout_constraintStart_toEndOf="@id/profilePicture"
-        app:layout_constraintTop_toTopOf="@id/profilePicture"
+        app:layout_constraintStart_toEndOf="@id/profileImageView"
+        app:layout_constraintTop_toTopOf="@id/profileImageView"
         app:layout_constraintEnd_toStartOf="@id/timestampText" />
 
     <TextView
@@ -38,7 +38,7 @@
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginTop="4dp"
-        app:layout_constraintStart_toEndOf="@id/profilePicture"
+        app:layout_constraintStart_toEndOf="@id/profileImageView"
         app:layout_constraintTop_toBottomOf="@id/chatNameText"
         app:layout_constraintEnd_toStartOf="@id/timestampText" />
 
@@ -52,9 +52,9 @@
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:layout_marginTop="4dp"
-        app:layout_constraintStart_toEndOf="@id/profilePicture"
+        app:layout_constraintStart_toEndOf="@id/profileImageView"
         app:layout_constraintTop_toBottomOf="@id/statusText"
-        app:layout_constraintBottom_toBottomOf="@id/profilePicture"
+        app:layout_constraintBottom_toBottomOf="@id/profileImageView"
         app:layout_constraintEnd_toStartOf="@id/timestampText" />
 
     <TextView
@@ -67,14 +67,14 @@
         android:layout_marginStart="8dp"
         android:layout_marginEnd="10dp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="@id/profilePicture" />
+        app:layout_constraintBottom_toBottomOf="@id/profileImageView" />
 
     <View
         android:layout_width="0dp"
         android:layout_height="1dp"
         android:background="@color/red_purple"
         android:layout_marginTop="10dp"
-        app:layout_constraintTop_toBottomOf="@id/profilePicture"
+        app:layout_constraintTop_toBottomOf="@id/profileImageView"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />
