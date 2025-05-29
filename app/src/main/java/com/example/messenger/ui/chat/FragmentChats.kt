@@ -104,4 +104,5 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
         chatsAdapter.submitList(filteredChats)
         binding.chatsRecyclerView.scrollToPosition(0)
     }
+
 }

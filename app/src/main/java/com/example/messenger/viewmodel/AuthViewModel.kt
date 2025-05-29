@@ -8,7 +8,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStoreOwner
 import com.example.messenger.data.repository.AuthRepository
 import com.example.messenger.data.repository.UserRepository
+import com.google.android.gms.tasks.Task
+import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 
 class AuthViewModel : ViewModel() {
 
@@ -37,55 +40,57 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun signIn(email: String, password: String) {
+    fun signIn(email: String, password: String): Task<AuthResult> {
         if (email.isEmpty() || password.isEmpty()) {
             _authState.value = AuthState(error = "Введите email и пароль")
-            return
+            return auth.signInAnonymously() // Заглушка, чтобы вернуть Task (можно заменить на другой подход)
         }
         _authState.value = AuthState(isLoading = true)
-        authRepository.signIn(email, password) { success, error ->
-            if (success) {
-                if (authRepository.isEmailVerified()) {
-                    val userId = authRepository.getCurrentUserId()
-                    Log.d("AuthViewModel", "Sign in successful, userId=$userId")
-                    _authState.value = AuthState(success = true, userId = userId)
-                    updateUserStatus(userId!!, "online")
+        return authRepository.signIn(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    if (authRepository.isEmailVerified()) {
+                        val userId = authRepository.getCurrentUserId()
+                        Log.d("AuthViewModel", "Sign in successful, userId=$userId")
+                        _authState.value = AuthState(success = true, userId = userId)
+                        updateUserStatus(userId!!, "online")
+                    } else {
+                        _authState.value = AuthState(error = "Подтвердите email")
+                    }
                 } else {
-                    _authState.value = AuthState(error = "Подтвердите email")
+                    Log.e("AuthViewModel", "Sign in failed: ${task.exception?.message}")
+                    _authState.value = AuthState(error = task.exception?.message)
                 }
-            } else {
-                Log.e("AuthViewModel", "Sign in failed: $error")
-                _authState.value = AuthState(error = error)
             }
-        }
     }
 
-    fun register(email: String, password: String, repeatPassword: String) {
+    fun register(email: String, password: String, repeatPassword: String): Task<AuthResult> {
         if (email.isEmpty() || password.isEmpty() || repeatPassword.isEmpty()) {
             _authState.value = AuthState(error = "Заполните все поля")
-            return
+            return auth.signInAnonymously() // Заглушка
         }
         if (password != repeatPassword) {
             _authState.value = AuthState(error = "Пароли не совпадают")
-            return
+            return auth.signInAnonymously() // Заглушка
         }
         _authState.value = AuthState(isLoading = true)
-        authRepository.register(email, password) { success, error ->
-            if (success) {
-                val userId = authRepository.getCurrentUserId()
-                val userMap = mapOf(
-                    "username" to email.substringBefore("@"),
-                    "email" to email,
-                    "status" to "online"
-                )
-                userRepository.saveUser(userId!!, userMap)
-                Log.d("AuthViewModel", "Register successful, userId=$userId")
-                _authState.value = AuthState(success = true, userId = userId)
-            } else {
-                Log.e("AuthViewModel", "Register failed: $error")
-                _authState.value = AuthState(error = error)
+        return authRepository.register(email, password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val userId = authRepository.getCurrentUserId()
+                    val userMap = mapOf(
+                        "username" to email.substringBefore("@"),
+                        "email" to email,
+                        "status" to "online"
+                    )
+                    userRepository.saveUser(userId!!, userMap)
+                    Log.d("AuthViewModel", "Register successful, userId=$userId")
+                    _authState.value = AuthState(success = true, userId = userId)
+                } else {
+                    Log.e("AuthViewModel", "Register failed: ${task.exception?.message}")
+                    _authState.value = AuthState(error = task.exception?.message)
+                }
             }
-        }
     }
 
     fun signOut() {
@@ -105,6 +110,10 @@ class AuthViewModel : ViewModel() {
     }
 
     fun isEmailVerified(): Boolean = authRepository.isEmailVerified()
+
+    fun getFirebaseUser(): FirebaseUser? {
+        return auth.currentUser
+    }
 
     private fun updateUserStatus(userId: String, status: String) {
         val userMap = mapOf("status" to status)
