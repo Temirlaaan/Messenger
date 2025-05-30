@@ -23,8 +23,16 @@ class AuthRepository {
     fun register(email: String, password: String): Task<AuthResult> {
         Log.d("AuthRepository", "Attempting to register with email: $email")
         return auth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener {
+            .addOnSuccessListener { authResult ->
                 Log.d("AuthRepository", "Register successful")
+                // Отправляем письмо верификации
+                authResult.user?.sendEmailVerification()
+                    ?.addOnSuccessListener {
+                        Log.d("AuthRepository", "Verification email sent")
+                    }
+                    ?.addOnFailureListener { e ->
+                        Log.e("AuthRepository", "Failed to send verification email: ${e.message}")
+                    }
             }
             .addOnFailureListener { e ->
                 Log.e("AuthRepository", "Register failed: ${e.message}")
@@ -46,5 +54,13 @@ class AuthRepository {
         val isVerified = auth.currentUser?.isEmailVerified ?: false
         Log.d("AuthRepository", "Email verified: $isVerified")
         return isVerified
+    }
+
+    fun sendEmailVerification(): Task<Void>? {
+        return auth.currentUser?.sendEmailVerification()
+    }
+
+    fun reloadUser(): Task<Void>? {
+        return auth.currentUser?.reload()
     }
 }

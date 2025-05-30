@@ -11,10 +11,9 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.messenger.MainActivity
 import com.example.messenger.R
 import com.example.messenger.data.repository.AuthRepository
+import com.example.messenger.ui.auth.confirm.ConfirmActivity
 import com.example.messenger.ui.auth.register.RegisterActivity
-import com.google.android.gms.tasks.Task
 import com.google.android.material.textfield.TextInputEditText
-import com.google.firebase.auth.AuthResult
 
 class LoginActivity : AppCompatActivity() {
 
@@ -30,8 +29,8 @@ class LoginActivity : AppCompatActivity() {
         val passwordEditText = findViewById<TextInputEditText>(R.id.passwordEditText)
         val loginButton = findViewById<Button>(R.id.loginButton)
         val tvRegister = findViewById<TextView>(R.id.tv_register)
-
         val progressBar = findViewById<ProgressBar>(R.id.progressBar)
+
         loginButton.setOnClickListener {
             val email = emailEditText.text.toString().trim()
             val password = passwordEditText.text.toString().trim()
@@ -43,20 +42,47 @@ class LoginActivity : AppCompatActivity() {
 
             progressBar.visibility = View.VISIBLE
             loginButton.isEnabled = false
+
             authRepository.signIn(email, password)
                 .addOnCompleteListener { task ->
                     progressBar.visibility = View.GONE
                     loginButton.isEnabled = true
+
                     if (task.isSuccessful) {
-                        val authResult = task.result
-                        if (authResult.user?.isEmailVerified == true) {
-                            startActivity(Intent(this, MainActivity::class.java))
-                            finish()
-                        } else {
-                            Toast.makeText(this, "Подтвердите email", Toast.LENGTH_SHORT).show()
+                        // Перезагружаем данные пользователя для актуального статуса верификации
+                        authRepository.reloadUser()?.addOnCompleteListener { reloadTask ->
+                            if (authRepository.isEmailVerified()) {
+                                startActivity(Intent(this, MainActivity::class.java))
+                                finish()
+                            } else {
+                                Toast.makeText(this, "Необходимо подтвердить email", Toast.LENGTH_SHORT).show()
+                                startActivity(Intent(this, ConfirmActivity::class.java).apply {
+                                    putExtra("email", email)
+                                })
+                            }
+                        } ?: run {
+                            // Если reloadUser вернул null, проверяем текущий статус
+                            if (authRepository.isEmailVerified()) {
+                                startActivity(Intent(this, MainActivity::class.java))
+                                finish()
+                            } else {
+                                Toast.makeText(this, "Необходимо подтвердить email", Toast.LENGTH_SHORT).show()
+                                startActivity(Intent(this, ConfirmActivity::class.java).apply {
+                                    putExtra("email", email)
+                                })
+                            }
                         }
                     } else {
-                        Toast.makeText(this, "Ошибка: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                        val errorMessage = when {
+                            task.exception?.message?.contains("user not found") == true ->
+                                "Пользователь не найден"
+                            task.exception?.message?.contains("wrong password") == true ->
+                                "Неверный пароль"
+                            task.exception?.message?.contains("invalid email") == true ->
+                                "Неверный формат email"
+                            else -> "Ошибка входа: ${task.exception?.message}"
+                        }
+                        Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show()
                     }
                 }
         }

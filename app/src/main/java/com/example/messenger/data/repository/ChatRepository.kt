@@ -31,7 +31,21 @@ class ChatRepository {
     fun sendMessage(message: Message, callback: (Boolean, String?) -> Unit) {
         val chatId = if (message.senderId < message.receiverId) "${message.senderId}_${message.receiverId}" else "${message.receiverId}_${message.senderId}"
         val messageRef = db.child("messages").child(chatId).push()
-        messageRef.setValue(message).addOnCompleteListener { task ->
+        val messageMap = mapOf(
+            "senderId" to message.senderId,
+            "receiverId" to message.receiverId,
+            "content" to message.content,
+            "timestamp" to message.timestamp,
+            "isRead" to message.isRead,
+            "type" to message.type,
+            "imageUrl" to message.imageUrl,
+            "isEncrypted" to message.isEncrypted,
+            "encryptedAESKey" to message.encryptedAESKey,
+            "iv" to message.iv,
+            "messageHash" to message.messageHash,
+            "timeSlot" to message.timeSlot
+        )
+        messageRef.setValue(messageMap).addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 callback(true, null)
             } else {

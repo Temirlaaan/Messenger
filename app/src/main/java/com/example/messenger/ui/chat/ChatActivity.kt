@@ -27,9 +27,8 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var messagesAdapter: MessagesAdapter
     private var receiverId: String? = null
     private val userRepository = UserRepository()
-    private var isInitialLoad = true // Флаг для определения originally загрузки
+    private var isInitialLoad = true
 
-    // Лаунчер для выбора изображения
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             val senderId = authViewModel.getCurrentUserId()
@@ -49,7 +48,7 @@ class ChatActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         authViewModel = ViewModelProvider(this).get(AuthViewModel::class.java)
-        chatsViewModel = ViewModelProvider(this, ChatsViewModelFactory(authViewModel)).get(ChatsViewModel::class.java)
+        chatsViewModel = ViewModelProvider(this, ChatsViewModelFactory(authViewModel, this)).get(ChatsViewModel::class.java)
         receiverId = intent.getStringExtra("receiverId")
 
         val senderId = authViewModel.getCurrentUserId()
@@ -119,7 +118,7 @@ class ChatActivity : AppCompatActivity() {
             }
 
             binding.sendImageButton.setOnClickListener {
-                pickImageLauncher.launch("image/*") // Открываем галерею для выбора изображения
+                pickImageLauncher.launch("image/*")
             }
         } else {
             Toast.makeText(this, "Ошибка: пользователь или получатель не определен", Toast.LENGTH_LONG).show()
@@ -129,13 +128,15 @@ class ChatActivity : AppCompatActivity() {
     private fun sendMessage(senderId: String) {
         val content = binding.messageEditText.text.toString().trim()
         if (content.isNotEmpty() && receiverId != null) {
+            val timestamp = System.currentTimeMillis()
             val message = Message(
                 senderId = senderId,
                 receiverId = receiverId!!,
                 content = content,
-                timestamp = System.currentTimeMillis(),
+                timestamp = timestamp,
                 isRead = false,
-                type = "text" // Добавляем тип сообщения
+                type = "text",
+                timeSlot = timestamp / 3600_000L // 1 час в миллисекундах
             )
 
             chatsViewModel.sendMessage(message)
@@ -151,14 +152,13 @@ class ChatActivity : AppCompatActivity() {
             else -> "Неизвестно"
         }
 
-        // Загружаем аватар пользователя в заголовке чата
         if (user.profileImageUrl?.isNotEmpty() == true) {
             Glide.with(this)
                 .load(user.profileImageUrl)
                 .placeholder(R.drawable.ic_profile_picture)
                 .error(R.drawable.ic_profile_picture)
                 .circleCrop()
-                .into(binding.profileImageView) // Предполагаем, что в activity_chat.xml есть ImageView с этим ID в headerLayout
+                .into(binding.profileImageView)
         } else {
             binding.profileImageView.setImageResource(R.drawable.ic_profile_picture)
         }

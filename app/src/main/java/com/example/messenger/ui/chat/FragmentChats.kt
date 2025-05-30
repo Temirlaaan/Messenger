@@ -32,7 +32,11 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
 
         binding = FragmentChatsBinding.bind(view)
         authViewModel = ViewModelProvider(requireActivity()).get(AuthViewModel::class.java)
-        chatsViewModel = ViewModelProvider(requireActivity(), ChatsViewModelFactory(authViewModel)).get(ChatsViewModel::class.java)
+        // Передаём контекст через requireContext()
+        chatsViewModel = ViewModelProvider(
+            requireActivity(),
+            ChatsViewModelFactory(authViewModel, requireContext())
+        ).get(ChatsViewModel::class.java)
 
         chatsAdapter = ChatsAdapter({ chatId ->
             val intent = Intent(requireContext(), ChatActivity::class.java).apply {
@@ -104,5 +108,4 @@ class FragmentChats : Fragment(R.layout.fragment_chats) {
         chatsAdapter.submitList(filteredChats)
         binding.chatsRecyclerView.scrollToPosition(0)
     }
-
 }
