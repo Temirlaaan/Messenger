@@ -18,7 +18,6 @@ import com.example.messenger.databinding.ActivityChatBinding
 import com.example.messenger.viewmodel.AuthViewModel
 import com.example.messenger.viewmodel.ChatsViewModel
 import com.example.messenger.viewmodel.ChatsViewModelFactory
-import java.util.concurrent.atomic.AtomicBoolean
 
 class ChatActivity : AppCompatActivity() {
 
@@ -133,7 +132,11 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
 
-            // УПРОЩЕННЫЕ обработчики кликов - убрали AtomicBoolean
+            // Обработчик кнопки "Назад"
+            binding.backButton.setOnClickListener {
+                finish() // Завершает активность и возвращает к предыдущему экрану
+            }
+
             binding.sendButton.setOnClickListener {
                 sendMessage(senderId)
             }
