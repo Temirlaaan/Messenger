@@ -39,6 +39,10 @@ class ChatsViewModel(
     private var cachedChats: List<Triple<String, Message?, Int>>? = null
     private var cachedUsers: List<User>? = null
     private var cachedMessages: List<Message>? = null
+    private var isSendingInProgress = false
+
+    // Добавляем Set для отслеживания отправляемых сообщений
+    private val pendingMessages = mutableSetOf<String>()
 
     data class ChatsState(
         val chats: List<Triple<String, Message?, Int>> = emptyList(),
@@ -108,24 +112,44 @@ class ChatsViewModel(
             val privateKey = encryptionManager.getPrivateKey(senderId)
             if (privateKey != null) {
                 val decryptedMessages = encryptionManager.decryptMessages(messages, privateKey)
-                if (cachedMessages != decryptedMessages) {
-                    cachedMessages = decryptedMessages
-                    _messagesState.value = MessagesState(messages = decryptedMessages, isLoading = false)
+                    .sortedBy { it.timestamp }
+
+                // Объединяем новые сообщения с уникальными идентификаторами
+                val uniqueMessages = mergeUniqueMessages(decryptedMessages)
+
+                if (cachedMessages != uniqueMessages) {
+                    cachedMessages = uniqueMessages
+                    _messagesState.value = MessagesState(messages = uniqueMessages, isLoading = false)
                 } else {
                     _messagesState.value = MessagesState(messages = cachedMessages!!, isLoading = false)
                 }
             } else {
                 Log.w("ChatsViewModel", "No private key found for user $senderId, messages not decrypted")
-                cachedMessages = messages
-                _messagesState.value = MessagesState(messages = messages, isLoading = false)
+                val sortedMessages = messages.sortedBy { it.timestamp }
+                val uniqueMessages = mergeUniqueMessages(sortedMessages)
+                cachedMessages = uniqueMessages
+                _messagesState.value = MessagesState(messages = uniqueMessages, isLoading = false)
             }
         }
     }
 
     fun sendMessage(message: Message) {
-        Log.d("ChatsViewModel", "Sending message: ${message.content}")
+        Log.d("ChatsViewModel", "Sending message: ${message.content}, isSendingInProgress=$isSendingInProgress")
+        if (isSendingInProgress) return
+
+        // Создаем уникальный ключ для сообщения
+        val messageKey = "${message.senderId}_${message.receiverId}_${message.timestamp}_${message.content.hashCode()}"
+
+        // Проверяем, не отправляется ли уже это сообщение
+        if (pendingMessages.contains(messageKey)) {
+            Log.d("ChatsViewModel", "Message already being sent, skipping")
+            return
+        }
+
+        pendingMessages.add(messageKey)
 
         val currentState = _messagesState.value ?: MessagesState()
+        isSendingInProgress = true
         _messagesState.value = currentState.copy(isSending = true)
 
         val receiverId = if (message.senderId == authViewModel.getCurrentUserId()) message.receiverId else message.senderId
@@ -134,13 +158,13 @@ class ChatsViewModel(
                 val publicKey = receiver.publicKey!!
                 val encryptedMessage = encryptionManager.encryptMessage(message, publicKey)
                 chatRepository.sendMessage(encryptedMessage) { success, error ->
-                    handleSendResult(success, error, encryptedMessage)
+                    handleSendResult(success, error, encryptedMessage, messageKey)
                 }
             } else {
                 Log.w("ChatsViewModel", "Receiver $receiverId has no public key, sending unencrypted")
                 val unencryptedMessage = message.copy(isEncrypted = false)
                 chatRepository.sendMessage(unencryptedMessage) { success, error ->
-                    handleSendResult(success, error, unencryptedMessage)
+                    handleSendResult(success, error, unencryptedMessage, messageKey)
                 }
             }
         }
@@ -184,7 +208,7 @@ class ChatsViewModel(
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val responseBody = response.body?.string() // Используем свойство body
+                val responseBody = response.body?.string()
                 if (!response.isSuccessful || responseBody.isNullOrEmpty()) {
                     Log.e("ChatsViewModel", "Unsuccessful response: code=${response.code}, body=$responseBody")
                     android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -284,20 +308,28 @@ class ChatsViewModel(
         cachedChats = null
         cachedUsers = null
         cachedMessages = null
+        isSendingInProgress = false
+        pendingMessages.clear() // Очищаем pending сообщения
         Log.d("ChatsViewModel", "Cache cleared")
     }
 
-    private fun handleSendResult(success: Boolean, error: String?, message: Message) {
+    // ИСПРАВЛЕННЫЙ метод handleSendResult - НЕ добавляем сообщение локально
+    private fun handleSendResult(success: Boolean, error: String?, message: Message, messageKey: String) {
+        // Удаляем сообщение из pending
+        pendingMessages.remove(messageKey)
+
         if (success) {
             Log.d("ChatsViewModel", "Message sent successfully")
             val currentState = _messagesState.value ?: MessagesState()
+
+            // НЕ добавляем сообщение локально - оно придет через Firebase listener
             _messagesState.value = currentState.copy(
                 isSending = false,
-                sendSuccess = true,
-                messages = listOf(message) + (cachedMessages ?: emptyList())
+                sendSuccess = true
+                // НЕ обновляем messages здесь!
             )
-            cachedMessages = listOf(message) + (cachedMessages ?: emptyList())
-            loadChats(authViewModel.getCurrentUserId()!!)
+
+            isSendingInProgress = false
         } else {
             Log.e("ChatsViewModel", "Error sending message: $error")
             _messagesState.value = MessagesState(
@@ -305,7 +337,19 @@ class ChatsViewModel(
                 isLoading = false,
                 isSending = false
             )
+            isSendingInProgress = false
         }
+    }
+
+    // Новый метод для объединения уникальных сообщений
+    private fun mergeUniqueMessages(newMessages: List<Message>): List<Message> {
+        val currentMessages = cachedMessages ?: emptyList()
+        val allMessages = (currentMessages + newMessages).distinctBy { message ->
+            // Создаем уникальный ключ на основе содержимого сообщения
+            "${message.senderId}_${message.receiverId}_${message.timestamp}_${message.content}_${message.type}"
+        }.sortedBy { it.timestamp }
+
+        return allMessages
     }
 
     private fun updateMessageInList(updatedMessage: Message, position: Int) {

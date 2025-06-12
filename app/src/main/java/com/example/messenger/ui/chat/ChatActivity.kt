@@ -18,6 +18,7 @@ import com.example.messenger.databinding.ActivityChatBinding
 import com.example.messenger.viewmodel.AuthViewModel
 import com.example.messenger.viewmodel.ChatsViewModel
 import com.example.messenger.viewmodel.ChatsViewModelFactory
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ChatActivity : AppCompatActivity() {
 
@@ -60,6 +61,7 @@ class ChatActivity : AppCompatActivity() {
 
             val layoutManager = LinearLayoutManager(this)
             layoutManager.stackFromEnd = true
+            layoutManager.reverseLayout = false
             binding.messagesRecyclerView.layoutManager = layoutManager
             binding.messagesRecyclerView.adapter = messagesAdapter
 
@@ -101,7 +103,7 @@ class ChatActivity : AppCompatActivity() {
                 val previousItemCount = messagesAdapter.itemCount
                 val wasAtBottom = isAtBottom
 
-                messagesAdapter.submitList(state.messages.distinctBy { it.timestamp to it.content }) {
+                messagesAdapter.submitList(state.messages) {
                     val newItemCount = messagesAdapter.itemCount
                     if (newItemCount > previousItemCount && wasAtBottom) {
                         binding.messagesRecyclerView.scrollToPosition(newItemCount - 1)
@@ -124,7 +126,6 @@ class ChatActivity : AppCompatActivity() {
                         it.error?.let { error ->
                             Toast.makeText(this, "Ошибка перевода: $error", Toast.LENGTH_SHORT).show()
                         }
-                        // Обновляем список после завершения перевода
                         chatsViewModel.messagesState.value?.messages?.let { messages ->
                             messagesAdapter.submitList(messages)
                         }
@@ -132,6 +133,7 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
 
+            // УПРОЩЕННЫЕ обработчики кликов - убрали AtomicBoolean
             binding.sendButton.setOnClickListener {
                 sendMessage(senderId)
             }
@@ -155,7 +157,7 @@ class ChatActivity : AppCompatActivity() {
                 timestamp = timestamp,
                 isRead = false,
                 type = "text",
-                timeSlot = timestamp / 3600_000L // 1 час в миллисекундах
+                timeSlot = timestamp / 3600_000L
             )
 
             chatsViewModel.sendMessage(message)
