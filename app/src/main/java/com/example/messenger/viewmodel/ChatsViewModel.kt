@@ -12,21 +12,29 @@ import com.example.messenger.data.repository.UserRepository
 import com.example.messenger.utils.MessageEncryptionManager
 import com.google.firebase.storage.FirebaseStorage
 import java.util.UUID
+import okhttp3.*
+import org.json.JSONArray
+import org.json.JSONObject
 
 class ChatsViewModel(
     private val authViewModel: AuthViewModel,
-    private val context: android.content.Context) : ViewModel() {
+    private val context: android.content.Context
+) : ViewModel() {
 
     private val chatRepository = ChatRepository()
     private val userRepository = UserRepository()
     private val storage = FirebaseStorage.getInstance()
     private val encryptionManager = MessageEncryptionManager(context)
+    private val client = OkHttpClient()
 
     private val _chatsState = MutableLiveData<ChatsState>()
     val chatsState: LiveData<ChatsState> = _chatsState
 
     private val _messagesState = MutableLiveData<MessagesState>()
     val messagesState: LiveData<MessagesState> = _messagesState
+
+    private val _translationState = MutableLiveData<TranslationState>()
+    val translationState: LiveData<TranslationState> = _translationState
 
     private var cachedChats: List<Triple<String, Message?, Int>>? = null
     private var cachedUsers: List<User>? = null
@@ -45,6 +53,12 @@ class ChatsViewModel(
         val isLoading: Boolean = false,
         val sendSuccess: Boolean = false,
         val isSending: Boolean = false
+    )
+
+    data class TranslationState(
+        val isTranslating: Boolean = false,
+        val translatedMessagePosition: Int = -1,
+        val error: String? = null
     )
 
     fun loadChats(userId: String) {
@@ -95,7 +109,7 @@ class ChatsViewModel(
             if (privateKey != null) {
                 val decryptedMessages = encryptionManager.decryptMessages(messages, privateKey)
                 if (cachedMessages != decryptedMessages) {
-                    cachedMessages = messages
+                    cachedMessages = decryptedMessages
                     _messagesState.value = MessagesState(messages = decryptedMessages, isLoading = false)
                 } else {
                     _messagesState.value = MessagesState(messages = cachedMessages!!, isLoading = false)
@@ -120,15 +134,99 @@ class ChatsViewModel(
                 val publicKey = receiver.publicKey!!
                 val encryptedMessage = encryptionManager.encryptMessage(message, publicKey)
                 chatRepository.sendMessage(encryptedMessage) { success, error ->
-                    handleSendResult(success, error)
+                    handleSendResult(success, error, encryptedMessage)
                 }
             } else {
                 Log.w("ChatsViewModel", "Receiver $receiverId has no public key, sending unencrypted")
-                chatRepository.sendMessage(message.copy(isEncrypted = false)) { success, error ->
-                    handleSendResult(success, error)
+                val unencryptedMessage = message.copy(isEncrypted = false)
+                chatRepository.sendMessage(unencryptedMessage) { success, error ->
+                    handleSendResult(success, error, unencryptedMessage)
                 }
             }
         }
+    }
+
+    fun translateMessage(message: Message, position: Int) {
+        if (message.translatedContent != null && message.translatedContent.isNotEmpty()) {
+            val updatedMessage = message.copy(translatedContent = null)
+            updateMessageInList(updatedMessage, position)
+            return
+        }
+
+        if (message.type != "text" || message.content.isBlank()) {
+            Log.w("ChatsViewModel", "Skipping translation: type=${message.type}, content='${message.content}'")
+            return
+        }
+
+        val needsTranslation = needsTranslation(message.content)
+        if (!needsTranslation) {
+            Log.d("ChatsViewModel", "Message doesn't need translation: ${message.content}")
+            return
+        }
+
+        _translationState.value = TranslationState(isTranslating = true, translatedMessagePosition = position)
+
+        val targetLanguage = if (isRussian(message.content)) "en" else "ru"
+        Log.d("ChatsViewModel", "Attempting to translate: content='${message.content}', target=$targetLanguage")
+
+        val requestUrl = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLanguage&dt=t&q=${java.net.URLEncoder.encode(message.content, "UTF-8")}"
+        val request = Request.Builder()
+            .url(requestUrl)
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: java.io.IOException) {
+                Log.e("ChatsViewModel", "Translation failed: ${e.message}")
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    _translationState.value = TranslationState(isTranslating = false, error = "Ошибка перевода")
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body?.string() // Используем свойство body
+                if (!response.isSuccessful || responseBody.isNullOrEmpty()) {
+                    Log.e("ChatsViewModel", "Unsuccessful response: code=${response.code}, body=$responseBody")
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        _translationState.value = TranslationState(isTranslating = false, error = "Ошибка сервера перевода")
+                    }
+                    return
+                }
+
+                try {
+                    val jsonArray = JSONArray(responseBody)
+                    if (jsonArray.length() > 0) {
+                        val translationArray = jsonArray.getJSONArray(0)
+                        if (translationArray.length() > 0) {
+                            val translatedText = translationArray.getJSONArray(0).getString(0)
+                            if (translatedText.isNotEmpty() && translatedText.lowercase() != message.content.lowercase()) {
+                                Log.d("ChatsViewModel", "Translation successful: '$translatedText'")
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    val updatedMessage = message.copy(translatedContent = translatedText)
+                                    updateMessageInList(updatedMessage, position)
+                                    _translationState.value = TranslationState(isTranslating = false)
+                                }
+                            } else {
+                                Log.d("ChatsViewModel", "Translation same as original or empty")
+                                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                    _translationState.value = TranslationState(isTranslating = false, error = "Перевод не требуется")
+                                }
+                            }
+                        }
+                    } else {
+                        Log.e("ChatsViewModel", "Could not parse translation response: $responseBody")
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            _translationState.value = TranslationState(isTranslating = false, error = "Ошибка обработки ответа")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ChatsViewModel", "Error parsing response: ${e.message}")
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        _translationState.value = TranslationState(isTranslating = false, error = "Ошибка обработки ответа")
+                    }
+                }
+            }
+        })
     }
 
     fun uploadAndSendImage(senderId: String, receiverId: String, imageUri: Uri, callback: (Boolean, String?) -> Unit) {
@@ -189,17 +287,17 @@ class ChatsViewModel(
         Log.d("ChatsViewModel", "Cache cleared")
     }
 
-    private fun handleSendResult(success: Boolean, error: String?) {
+    private fun handleSendResult(success: Boolean, error: String?, message: Message) {
         if (success) {
             Log.d("ChatsViewModel", "Message sent successfully")
-            _messagesState.value = MessagesState(
-                messages = cachedMessages ?: emptyList(),
-                isLoading = false,
+            val currentState = _messagesState.value ?: MessagesState()
+            _messagesState.value = currentState.copy(
+                isSending = false,
                 sendSuccess = true,
-                isSending = false
+                messages = listOf(message) + (cachedMessages ?: emptyList())
             )
-            val userId = authViewModel.getCurrentUserId()
-            userId?.let { loadChats(it) }
+            cachedMessages = listOf(message) + (cachedMessages ?: emptyList())
+            loadChats(authViewModel.getCurrentUserId()!!)
         } else {
             Log.e("ChatsViewModel", "Error sending message: $error")
             _messagesState.value = MessagesState(
@@ -210,9 +308,39 @@ class ChatsViewModel(
         }
     }
 
+    private fun updateMessageInList(updatedMessage: Message, position: Int) {
+        val currentMessages = cachedMessages?.toMutableList() ?: return
+        if (position >= 0 && position < currentMessages.size) {
+            currentMessages[position] = updatedMessage
+            cachedMessages = currentMessages
+            _messagesState.value = _messagesState.value?.copy(messages = currentMessages)
+        }
+    }
+
     private fun decryptMessageIfNeeded(message: Message): Message {
         val userId = authViewModel.getCurrentUserId() ?: return message
         val privateKey = encryptionManager.getPrivateKey(userId) ?: return message
         return encryptionManager.decryptMessage(message, privateKey)
+    }
+
+    private fun isRussian(text: String): Boolean {
+        return text.any { it in 'а'..'я' || it in 'А'..'Я' || it in 'ё'..'ё' || it in 'Ё'..'Ё' }
+    }
+
+    private fun isEnglish(text: String): Boolean {
+        return text.any { it in 'a'..'z' || it in 'A'..'Z' }
+    }
+
+    private fun needsTranslation(text: String): Boolean {
+        val cleanText = text.trim()
+        if (cleanText.length < 2) return false
+        if (cleanText.all { !it.isLetter() }) return false
+        val hasRussian = isRussian(cleanText)
+        val hasEnglish = isEnglish(cleanText)
+        if (hasRussian && hasEnglish) {
+            Log.d("ChatsViewModel", "Mixed language text, skipping translation")
+            return false
+        }
+        return hasRussian || hasEnglish
     }
 }

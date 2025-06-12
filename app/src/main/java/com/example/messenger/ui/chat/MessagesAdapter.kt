@@ -13,8 +13,10 @@ import com.example.messenger.databinding.ItemMessageBinding
 import java.text.SimpleDateFormat
 import java.util.*
 
-class MessagesAdapter(private val currentUserId: String) :
-    ListAdapter<Message, MessagesAdapter.MessageViewHolder>(MessageDiffCallback()) {
+class MessagesAdapter(
+    private val currentUserId: String,
+    private val onTranslateClick: (Message, Int) -> Unit
+) : ListAdapter<Message, MessagesAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
         val binding = ItemMessageBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -22,7 +24,7 @@ class MessagesAdapter(private val currentUserId: String) :
     }
 
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-        holder.bind(getItem(position))
+        holder.bind(getItem(position), position)
     }
 
     override fun getItemId(position: Int): Long {
@@ -31,11 +33,14 @@ class MessagesAdapter(private val currentUserId: String) :
 
     inner class MessageViewHolder(private val binding: ItemMessageBinding) :
         RecyclerView.ViewHolder(binding.root) {
-        fun bind(message: Message) {
+
+        fun bind(message: Message, position: Int) {
             // Настройка контента сообщения
             if (message.type == "image" && message.imageUrl != null) {
                 binding.messageText.visibility = View.GONE
                 binding.messageImage.visibility = View.VISIBLE
+                binding.translationText.visibility = View.GONE
+                binding.translateButton.visibility = View.GONE
 
                 Glide.with(binding.root.context)
                     .load(message.imageUrl)
@@ -48,12 +53,35 @@ class MessagesAdapter(private val currentUserId: String) :
                     binding.root.context.startActivity(intent)
                 }
             } else {
+                // Текстовое сообщение
                 binding.messageText.visibility = View.VISIBLE
                 binding.messageImage.visibility = View.GONE
                 binding.messageText.text = message.content
 
-                // Убираем клик для текстовых сообщений
+                // Показываем кнопку перевода только для текстовых сообщений
+                if (message.type == "text" && needsTranslation(message.content)) {
+                    binding.translateButton.visibility = View.VISIBLE
+                } else {
+                    binding.translateButton.visibility = View.GONE
+                }
+
+                // Показываем перевод, если он доступен
+                if (message.translatedContent != null && message.translatedContent.isNotEmpty()) {
+                    binding.translationText.visibility = View.VISIBLE
+                    binding.translationText.text = message.translatedContent
+                    binding.translateButton.text = "Скрыть перевод"
+                } else {
+                    binding.translationText.visibility = View.GONE
+                    binding.translateButton.text = "Перевести"
+                }
+
+                // Убираем клик для изображений
                 binding.messageImage.setOnClickListener(null)
+            }
+
+            // Обработчик клика на кнопку перевода
+            binding.translateButton.setOnClickListener {
+                onTranslateClick(message, position)
             }
 
             binding.timestampText.text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(message.getTimestampAsDate())
@@ -69,10 +97,7 @@ class MessagesAdapter(private val currentUserId: String) :
                 rootLayoutParams.setMargins(100, 8, 16, 8) // Большой отступ слева
                 binding.root.layoutParams = rootLayoutParams
 
-                // Убираем RTL, используем gravity
                 binding.messageContainer.layoutDirection = View.LAYOUT_DIRECTION_LTR
-
-                // Выравнивание родительского элемента
                 if (binding.root is android.widget.FrameLayout) {
                     val containerParams = binding.messageContainer.layoutParams as android.widget.FrameLayout.LayoutParams
                     containerParams.gravity = android.view.Gravity.END
@@ -87,13 +112,26 @@ class MessagesAdapter(private val currentUserId: String) :
                 binding.root.layoutParams = rootLayoutParams
 
                 binding.messageContainer.layoutDirection = View.LAYOUT_DIRECTION_LTR
-
                 if (binding.root is android.widget.FrameLayout) {
                     val containerParams = binding.messageContainer.layoutParams as android.widget.FrameLayout.LayoutParams
                     containerParams.gravity = android.view.Gravity.START
                     binding.messageContainer.layoutParams = containerParams
                 }
             }
+        }
+
+        private fun needsTranslation(text: String): Boolean {
+            val cleanText = text.trim()
+            if (cleanText.length < 2) return false
+            if (cleanText.all { !it.isLetter() }) return false
+
+            val hasRussian = text.any { it in 'а'..'я' || it in 'А'..'Я' || it in 'ё'..'ё' || it in 'Ё'..'Ё' }
+            val hasEnglish = text.any { it in 'a'..'z' || it in 'A'..'Z' }
+
+            // Не переводим смешанные тексты
+            if (hasRussian && hasEnglish) return false
+
+            return hasRussian || hasEnglish
         }
     }
 }

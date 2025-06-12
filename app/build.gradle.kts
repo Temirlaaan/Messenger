@@ -76,4 +76,10 @@ dependencies {
     implementation ("com.github.bumptech.glide:glide:4.15.1")
 
     implementation ("androidx.lifecycle:lifecycle-runtime-ktx:2.8.0")
+
+    // Для HTTP запросов (если еще не добавлено)
+    implementation ("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Для работы с JSON (если еще не добавлено)
+    implementation ("org.json:json:20230227")
 }

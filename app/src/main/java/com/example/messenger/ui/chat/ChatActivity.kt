@@ -53,7 +53,9 @@ class ChatActivity : AppCompatActivity() {
 
         val senderId = authViewModel.getCurrentUserId()
         if (senderId != null && receiverId != null) {
-            messagesAdapter = MessagesAdapter(senderId)
+            messagesAdapter = MessagesAdapter(senderId) { message, position ->
+                chatsViewModel.translateMessage(message, position)
+            }
             messagesAdapter.setHasStableIds(true)
 
             val layoutManager = LinearLayoutManager(this)
@@ -110,6 +112,23 @@ class ChatActivity : AppCompatActivity() {
 
                 if (state.error != null) {
                     Toast.makeText(this, "Ошибка загрузки сообщений: ${state.error}", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            chatsViewModel.translationState.observe(this) { state ->
+                state?.let {
+                    if (it.isTranslating) {
+                        binding.loadingProgressBar.visibility = View.VISIBLE
+                    } else {
+                        binding.loadingProgressBar.visibility = View.GONE
+                        it.error?.let { error ->
+                            Toast.makeText(this, "Ошибка перевода: $error", Toast.LENGTH_SHORT).show()
+                        }
+                        // Обновляем список после завершения перевода
+                        chatsViewModel.messagesState.value?.messages?.let { messages ->
+                            messagesAdapter.submitList(messages)
+                        }
+                    }
                 }
             }
 

@@ -14,7 +14,9 @@ data class Message(
     val encryptedAESKey: String? = null, // Зашифрованный AES ключ (для получателя)
     val iv: String? = null, // Вектор инициализации для AES
     val messageHash: String? = null, // Хеш для проверки целостности
-    val timeSlot: Long = 0L // Временной отрезок (например, номер часа)
+    val timeSlot: Long = 0L, // Временной отрезок (например, номер часа)
+    val translatedContent: String? = null, // Переведённый текст
+    val isTranslationAvailable: Boolean = false // Флаг доступности перевода
 ) {
     fun getTimestampAsDate(): Date = Date(timestamp)
 
@@ -41,7 +43,9 @@ data class Message(
             encryptedAESKey = encryptedAESKey,
             iv = iv,
             messageHash = messageHash,
-            timeSlot = timeSlot
+            timeSlot = timeSlot,
+            translatedContent = translatedContent,
+            isTranslationAvailable = isTranslationAvailable
         )
     }
 
@@ -54,7 +58,9 @@ data class Message(
             isEncrypted = false,
             encryptedAESKey = null,
             iv = null,
-            messageHash = null
+            messageHash = null,
+            translatedContent = translatedContent,
+            isTranslationAvailable = isTranslationAvailable
         )
     }
 }
